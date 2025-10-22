@@ -2,6 +2,39 @@
 
 A web application built with React Three Fiber that allows users to create and manage 3D scenes. Key features include dynamic model loading, interactive object transformation, and flexible scene export options for different use cases.
 
+## Demo
+
+![Platform Demo](demo.gif)
+
+### Interface Overview
+
+**Top Control Panel:**
+- **Add to Library** - Upload `.glb` models from your local computer to the reusable library
+- **Save Scene** - Export complete scene with both position data AND embedded GLB files in JSON format
+- **Load Scene** - Load a previously saved scene JSON file to restore your work
+- **Export Info** - Export position/rotation/scale data ONLY in JSON (no GLB files included)
+
+**Transform Controls:**
+- **Move** - Change the position (x, y, z) of selected objects
+- **Rotate** - Adjust the rotation angles of selected objects  
+- **Scale** - Modify the size of selected objects
+
+**Environment Selector:**
+- Choose HDRI lighting presets: Studio, City, Dawn, Sunset, or Apartment
+
+**Right Panel - Library:**
+- View all uploaded models
+- Click **Add** to place duplicate instances of any model into the scene
+- Click **X** to remove models from the library
+
+**Left Bottom Panel - Properties:**
+- Real-time display of selected object's:
+  - ID (unique identifier)
+  - Position (x, y, z coordinates)
+  - Rotation (in degrees)
+  - Scale (size multiplier)
+- **Delete Selected Item** button to remove objects from scene
+
 ## Features
 
 -   **Model Library:** Upload `.glb` models to a reusable library panel for quick scene building.
