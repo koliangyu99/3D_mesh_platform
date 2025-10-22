@@ -1,13 +1,16 @@
 # Mesh Platform - 3D Scene Editor
 
-A web application built with React Three Fiber that allows users to create and manage 3D scenes. Key features include dynamic model loading, interactive object transformation, and scene serialization to and from JSON format.
+A web application built with React Three Fiber that allows users to create and manage 3D scenes. Key features include dynamic model loading, interactive object transformation, and flexible scene export options for different use cases.
 
 ## Features
 
--   **Model Library:** Upload `.glb` models to a reusable library panel.
+-   **Model Library:** Upload `.glb` models to a reusable library panel for quick scene building.
 -   **Interactive Transformation:** Select objects in the scene to translate, rotate, and scale them with interactive gizmos.
--   **Scene Persistence:** Save the entire scene state (including library assets and object transformations) to a `.json` file and load it back into the editor.
--   **Dynamic Environments:** Change the scene's lighting and reflections by selecting from multiple HDRI environment presets.
+-   **Dual Export System:** 
+    - **Save Scene:** Export complete scenes with embedded GLB files for full portability
+    - **Export Info:** Export lightweight JSON with only position/rotation/scale data (no model files)
+-   **Scene Persistence:** Load previously saved scenes back into the editor with all transformations preserved.
+-   **Dynamic Environments:** Change the scene's lighting and reflections by selecting from multiple HDRI environment presets (studio, city, dawn, sunset, apartment).
 -   **Properties Inspector:** View detailed data for any selected object and perform actions like deletion.
 
 ## Technology Stack
@@ -20,11 +23,11 @@ A web application built with React Three Fiber that allows users to create and m
 
 ## Local Development
 
-To run this project on your local machine, follow these steps.
+To run this project on your local machine, follow these steps:
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/koliangyu99/mesh_platform.git](https://github.com/koliangyu99/mesh_platform.git)
+    git clone https://github.com/koliangyu99/mesh_platform.git
     ```
 
 2.  **Navigate to the project directory:**
@@ -43,17 +46,104 @@ To run this project on your local machine, follow these steps.
     ```
 The application will be available at `http://localhost:5173` or another port specified in your terminal.
 
+## How to Use
 
+### Basic Workflow
 
-# React + Vite
+1. **Add Models to Library**
+   - Click "Add to Library" button
+   - Select a `.glb` file from your computer
+   - The model appears in the Library panel on the right
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+2. **Build Your Scene**
+   - Click "Add" next to any library item to place it in the scene
+   - Click on objects in the 3D view to select them
+   - Use Move/Rotate/Scale buttons to change transformation mode
+   - Drag the gizmo handles to transform objects
 
-Currently, two official plugins are available:
+3. **Adjust Environment**
+   - Use the Environment dropdown to change lighting
+   - Choose from: Studio, City, Dawn, Sunset, or Apartment
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+4. **Export Your Work**
+   - **Save Scene** (Green button): Saves everything including GLB files - use this to continue editing later
+   - **Export Info** (Orange button): Exports only object data (id, name, position, rotation, scale) - use this for integration with other systems
+   - **Load Scene** (Blue button): Reload a previously saved scene
 
-## Expanding the ESLint configuration
+### Export Formats
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+#### Save Scene Output (`scene.json`)
+```json
+{
+  "library": [
+    {
+      "name": "chair.glb",
+      "url": "data:application/octet-stream;base64,..."
+    }
+  ],
+  "items": [
+    {
+      "id": "abc123...",
+      "name": "chair.glb",
+      "url": "data:application/octet-stream;base64,...",
+      "position": [0, 1, 0],
+      "rotation": [0, 1.57, 0],
+      "scale": [1, 1, 1]
+    }
+  ],
+  "environment": "studio"
+}
+```
+
+#### Export Info Output (`scene_info.json`)
+```json
+{
+  "environment": "studio",
+  "items": [
+    {
+      "id": "abc123...",
+      "name": "chair.glb",
+      "position": [0, 1, 0],
+      "rotation": [0, 1.57, 0],
+      "scale": [1, 1, 1]
+    }
+  ]
+}
+```
+
+### Lighting System
+
+The platform uses a three-layer lighting setup:
+
+1. **Ambient Light** - Low-intensity (0.1) fill light to soften shadows
+2. **Directional Light** - Main light source positioned at `[5, 10, 7]` with 1.8 intensity, creates sharp shadows
+3. **HDRI Environment** - Provides realistic reflections and ambient lighting based on selected preset
+
+You can customize the floor color and size using the Leva controls panel (collapsed by default).
+
+## Use Cases
+
+- **Prototyping**: Quickly arrange 3D models to visualize spatial layouts
+- **Game Development**: Export scene info JSON to import object positions into game engines
+- **Virtual Staging**: Create and save room layouts with furniture
+- **3D Presentations**: Prepare scenes and export for use in other applications
+
+## Project Structure
+
+```
+mesh_platform/
+├── src/
+│   ├── App.jsx          # Main application component
+│   ├── App.css          # Styling
+│   └── main.jsx         # Entry point
+├── public/              # Static assets
+└── package.json         # Dependencies
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+[Your License Here]

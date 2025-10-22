@@ -320,7 +320,6 @@ export default function App() {
     const sceneData = {
       library: state.library,
       items: state.items,
-      // NEW: Save the environment preset
       environment: state.environment, 
     };
     const sceneString = JSON.stringify(sceneData, null, 2);
@@ -329,6 +328,34 @@ export default function App() {
     const a = document.createElement('a');
     a.href = url;
     a.download = 'scene.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // NEW: Export only metadata without GLB data
+  const handleExportInfo = () => {
+    const state = useStore.getState();
+    
+    // Extract only the metadata from items (no GLB data)
+    const itemsInfo = state.items.map(item => ({
+      id: item.id,
+      name: item.name, // Reference to the model filename
+      position: item.position,
+      rotation: item.rotation,
+      scale: item.scale,
+    }));
+    
+    const infoData = {
+      environment: state.environment,
+      items: itemsInfo,
+    };
+    
+    const infoString = JSON.stringify(infoData, null, 2);
+    const blob = new Blob([infoString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'scene_info.json';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -344,6 +371,7 @@ export default function App() {
           </button>
           <button style={{...styles.button, backgroundColor: '#10b981'}} onClick={handleSave}>Save Scene</button>
           <button style={{...styles.button, backgroundColor: '#0ea5e9'}} onClick={() => sceneInputRef.current.click()}>Load Scene</button>
+          <button style={{...styles.button, backgroundColor: '#f59e0b'}} onClick={handleExportInfo}>Export Info</button>
         </div>
         <div style={styles.buttonGroup}>
           <button 
