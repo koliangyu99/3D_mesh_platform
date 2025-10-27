@@ -4,6 +4,8 @@ import { OrbitControls, useGLTF, TransformControls, Html, Environment } from '@r
 import { Leva, useControls } from 'leva';
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
+// NEW: Import lighting system
+import { calculateRoomBounds, RoomLights, FurnitureLights } from './lightingSystem';
 
 // --- Basic CSS Styles (replaces Tailwind) ---
 const styles = {
@@ -66,7 +68,6 @@ const styles = {
     padding: '8px',
     borderBottom: '1px solid #3f3f46',
   },
-  // NEW: Style for the environment selector
   select: {
     backgroundColor: '#3f3f46',
     color: 'white',
@@ -81,9 +82,25 @@ const styles = {
 const useStore = create((set) => ({
   items: [],
   library: [], 
-  // NEW: State for the environment preset
   environment: 'studio', 
   setEnvironment: (env) => set({ environment: env }),
+  // NEW: Room lighting state
+  roomLightingPreset: 'warm-evening',
+  setRoomLightingPreset: (preset) => set({ roomLightingPreset: preset }),
+  // NEW: Furniture lighting state
+  furnitureLightingPreset: 'default',
+  setFurnitureLightingPreset: (preset) => set({ furnitureLightingPreset: preset }),
+  // NEW: Track room bounds
+  roomBounds: null,
+  setRoomBounds: (bounds) => set({ roomBounds: bounds }),
+  // NEW: Light intensity multipliers
+  roomLightIntensity: 1.0,
+  setRoomLightIntensity: (intensity) => set({ roomLightIntensity: intensity }),
+  furnitureLightIntensity: 1.0,
+  setFurnitureLightIntensity: (intensity) => set({ furnitureLightIntensity: intensity }),
+  // NEW: Room material brightness (overexposure effect)
+  roomMaterialBrightness: 1.0,
+  setRoomMaterialBrightness: (brightness) => set({ roomMaterialBrightness: brightness }),
   addLibraryItem: (newItem) => set((state) => ({
     library: [...state.library, newItem]
   })),
@@ -104,8 +121,13 @@ const useStore = create((set) => ({
   loadScene: (sceneData) => set({
     items: sceneData.items || [],
     library: sceneData.library || [],
-    // NEW: Load environment from save file
-    environment: sceneData.environment || 'studio', 
+    environment: sceneData.environment || 'studio',
+    // NEW: Load lighting presets
+    roomLightingPreset: sceneData.roomLightingPreset || 'warm-evening',
+    furnitureLightingPreset: sceneData.furnitureLightingPreset || 'default',
+    roomLightIntensity: sceneData.roomLightIntensity || 1.0,
+    furnitureLightIntensity: sceneData.furnitureLightIntensity || 1.0,
+    roomMaterialBrightness: sceneData.roomMaterialBrightness || 1.0,
     selectedItem: null,
   }),
   selectedItem: null,
@@ -115,21 +137,73 @@ const useStore = create((set) => ({
 }));
 
 // Component for a single piece of furniture
-function FurnitureModel({ id, url, position, rotation, scale }) {
+function FurnitureModel({ id, url, position, rotation, scale, name }) {
   const { scene } = useGLTF(url);
-  const { setSelectedItem, updateItem } = useStore();
+  const { setSelectedItem, updateItem, setRoomBounds } = useStore();
   const transform = useRef();
   const transformMode = useStore((state) => state.transformMode);
+  const roomMaterialBrightness = useStore((state) => state.roomMaterialBrightness);
+  
+  // NEW: Check if this is the room model
+  const isRoom = name && name.toLowerCase() === 'room.glb';
 
   useEffect(() => {
     scene.traverse((child) => {
       if (child.isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
+        if (isRoom) {
+          // Room doesn't cast shadows, only receives
+          child.castShadow = false;
+          child.receiveShadow = true;
+          
+          // NEW: Apply material brightness adjustment for overexposure effect
+          if (child.material) {
+            // Store original material properties if not already stored
+            if (!child.material.userData.originalColor) {
+              child.material.userData.originalColor = child.material.color.clone();
+              child.material.userData.originalEmissive = child.material.emissive ? child.material.emissive.clone() : null;
+              child.material.userData.originalEmissiveIntensity = child.material.emissiveIntensity || 0;
+            }
+            
+            // Apply brightness multiplier
+            const originalColor = child.material.userData.originalColor;
+            child.material.color.r = Math.min(originalColor.r * roomMaterialBrightness, 1);
+            child.material.color.g = Math.min(originalColor.g * roomMaterialBrightness, 1);
+            child.material.color.b = Math.min(originalColor.b * roomMaterialBrightness, 1);
+            
+            // Also increase emissive for glow effect
+            if (child.material.emissive) {
+              const originalEmissive = child.material.userData.originalEmissive;
+              if (originalEmissive) {
+                child.material.emissive.copy(originalEmissive);
+              }
+              // Add brightness-based emissive glow
+              const glowIntensity = (roomMaterialBrightness - 1) * 0.5;
+              child.material.emissiveIntensity = child.material.userData.originalEmissiveIntensity + glowIntensity;
+            }
+            
+            child.material.needsUpdate = true;
+          }
+        } else {
+          // Furniture casts and receives shadows
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
       }
     });
-  }, [scene]);
-
+    
+    // NEW: If this is the room, calculate its bounds
+    if (isRoom) {
+      const bounds = calculateRoomBounds(scene);
+      setRoomBounds(bounds);
+    }
+    
+    return () => {
+      // Clean up room bounds when room is removed
+      if (isRoom) {
+        setRoomBounds(null);
+      }
+    };
+  }, [scene, isRoom, setRoomBounds, roomMaterialBrightness]);
 
   useEffect(() => {
     if (transform.current) {
@@ -181,8 +255,13 @@ function FurnitureItems() {
 function Scene() {
   const setSelectedItem = useStore((state) => state.setSelectedItem);
   const environment = useStore((state) => state.environment);
+  // NEW: Get lighting states
+  const roomLightingPreset = useStore((state) => state.roomLightingPreset);
+  const furnitureLightingPreset = useStore((state) => state.furnitureLightingPreset);
+  const roomBounds = useStore((state) => state.roomBounds);
+  const roomLightIntensity = useStore((state) => state.roomLightIntensity);
+  const furnitureLightIntensity = useStore((state) => state.furnitureLightIntensity);
   
-  // REMOVED: Leva controls for lighting. Now using a simpler setup.
   const { floorColor, floorSize } = useControls('Floor', {
       floorColor: '#888888',
       floorSize: { value: 20, min: 1, max: 100}
@@ -190,17 +269,12 @@ function Scene() {
 
   return (
     <>
-      {/* A low-intensity ambient light to soften the darkest shadows */}
-      <ambientLight intensity={0.1} />
-      {/* A strong direct light to cast sharp shadows */}
-      <directionalLight 
-        color="#fff1e0"
-        position={[5, 10, 7]} 
-        intensity={1.8} 
-        castShadow 
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-      />
+      {/* NEW: Use FurnitureLights component instead of hardcoded lights */}
+      <FurnitureLights preset={furnitureLightingPreset} intensityMultiplier={furnitureLightIntensity} />
+      
+      {/* NEW: Add RoomLights if room exists */}
+      {roomBounds && <RoomLights preset={roomLightingPreset} roomBounds={roomBounds} intensityMultiplier={roomLightIntensity} />}
+      
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow onClick={() => setSelectedItem(null)}>
         <planeGeometry args={[floorSize, floorSize]} />
         <meshStandardMaterial color={floorColor} />
@@ -208,7 +282,6 @@ function Scene() {
       <gridHelper args={[floorSize, floorSize]} />
       <FurnitureItems />
       <OrbitControls makeDefault />
-      {/* NEW: The Environment component for HDRI lighting */}
       <Environment preset={environment} />
     </>
   );
@@ -273,7 +346,28 @@ function LibraryPanel() {
 }
 
 export default function App() {
-  const { addLibraryItem, library, transformMode, setTransformMode, loadScene, environment, setEnvironment } = useStore();
+  const { 
+    addLibraryItem, 
+    library, 
+    transformMode, 
+    setTransformMode, 
+    loadScene, 
+    environment, 
+    setEnvironment,
+    // NEW: Get lighting states
+    roomLightingPreset,
+    setRoomLightingPreset,
+    furnitureLightingPreset,
+    setFurnitureLightingPreset,
+    roomBounds,
+    roomLightIntensity,
+    setRoomLightIntensity,
+    furnitureLightIntensity,
+    setFurnitureLightIntensity,
+    roomMaterialBrightness,
+    setRoomMaterialBrightness
+  } = useStore();
+  
   const fileInputRef = useRef();
   const sceneInputRef = useRef();
 
@@ -320,7 +414,13 @@ export default function App() {
     const sceneData = {
       library: state.library,
       items: state.items,
-      environment: state.environment, 
+      environment: state.environment,
+      // NEW: Save lighting presets
+      roomLightingPreset: state.roomLightingPreset,
+      furnitureLightingPreset: state.furnitureLightingPreset,
+      roomLightIntensity: state.roomLightIntensity,
+      furnitureLightIntensity: state.furnitureLightIntensity,
+      roomMaterialBrightness: state.roomMaterialBrightness,
     };
     const sceneString = JSON.stringify(sceneData, null, 2);
     const blob = new Blob([sceneString], { type: 'application/json' });
@@ -332,14 +432,12 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  // NEW: Export only metadata without GLB data
   const handleExportInfo = () => {
     const state = useStore.getState();
     
-    // Extract only the metadata from items (no GLB data)
     const itemsInfo = state.items.map(item => ({
       id: item.id,
-      name: item.name, // Reference to the model filename
+      name: item.name,
       position: item.position,
       rotation: item.rotation,
       scale: item.scale,
@@ -348,6 +446,12 @@ export default function App() {
     const infoData = {
       environment: state.environment,
       items: itemsInfo,
+      // NEW: Export lighting presets
+      roomLightingPreset: state.roomLightingPreset,
+      furnitureLightingPreset: state.furnitureLightingPreset,
+      roomLightIntensity: state.roomLightIntensity,
+      furnitureLightIntensity: state.furnitureLightIntensity,
+      roomMaterialBrightness: state.roomMaterialBrightness,
     };
     
     const infoString = JSON.stringify(infoData, null, 2);
@@ -390,7 +494,8 @@ export default function App() {
             Scale
           </button>
         </div>
-        {/* NEW: Environment selector dropdown */}
+        
+        {/* Environment selector */}
         <div style={styles.buttonGroup}>
           <label htmlFor="env-select" style={{alignSelf: 'center'}}>Environment:</label>
           <select id="env-select" value={environment} onChange={(e) => setEnvironment(e.target.value)} style={styles.select}>
@@ -400,6 +505,94 @@ export default function App() {
             <option value="sunset">Sunset</option>
             <option value="apartment">Apartment</option>
           </select>
+        </div>
+        
+        {/* NEW: Room Lighting selector */}
+        <div style={styles.buttonGroup}>
+          <label htmlFor="room-light-select" style={{alignSelf: 'center'}}>Room Lighting:</label>
+          <select 
+            id="room-light-select" 
+            value={roomLightingPreset} 
+            onChange={(e) => setRoomLightingPreset(e.target.value)} 
+            style={styles.select}
+            disabled={!roomBounds}
+          >
+            <option value="off">Off</option>
+            <option value="warm-evening">Warm Evening</option>
+            <option value="bright-day">Bright Day</option>
+            <option value="cozy-night">Cozy Night</option>
+            <option value="studio-neutral">Studio Neutral</option>
+            <option value="sunset">Sunset</option>
+          </select>
+        </div>
+        
+        {/* NEW: Furniture Lighting selector */}
+        <div style={styles.buttonGroup}>
+          <label htmlFor="furniture-light-select" style={{alignSelf: 'center'}}>Furniture Lighting:</label>
+          <select 
+            id="furniture-light-select" 
+            value={furnitureLightingPreset} 
+            onChange={(e) => setFurnitureLightingPreset(e.target.value)} 
+            style={styles.select}
+          >
+            <option value="default">Default</option>
+            <option value="bright">Bright</option>
+            <option value="soft">Soft</option>
+            <option value="dramatic">Dramatic</option>
+          </select>
+        </div>
+        
+        {/* NEW: Room Light Intensity Slider */}
+        <div style={styles.buttonGroup}>
+          <label htmlFor="room-intensity" style={{alignSelf: 'center', minWidth: '120px'}}>
+            Room Intensity: {roomLightIntensity.toFixed(1)}x
+          </label>
+          <input 
+            id="room-intensity"
+            type="range" 
+            min="0" 
+            max="3" 
+            step="0.1" 
+            value={roomLightIntensity}
+            onChange={(e) => setRoomLightIntensity(parseFloat(e.target.value))}
+            disabled={!roomBounds}
+            style={{flex: 1, cursor: roomBounds ? 'pointer' : 'not-allowed'}}
+          />
+        </div>
+        
+        {/* NEW: Furniture Light Intensity Slider */}
+        <div style={styles.buttonGroup}>
+          <label htmlFor="furniture-intensity" style={{alignSelf: 'center', minWidth: '120px'}}>
+            Furniture Intensity: {furnitureLightIntensity.toFixed(1)}x
+          </label>
+          <input 
+            id="furniture-intensity"
+            type="range" 
+            min="0" 
+            max="3" 
+            step="0.1" 
+            value={furnitureLightIntensity}
+            onChange={(e) => setFurnitureLightIntensity(parseFloat(e.target.value))}
+            style={{flex: 1, cursor: 'pointer'}}
+          />
+        </div>
+        
+        {/* NEW: Room Material Brightness Slider (Overexposure Effect) */}
+        <div style={styles.buttonGroup}>
+          <label htmlFor="room-material-brightness" style={{alignSelf: 'center', minWidth: '120px'}}>
+            Room Brightness: {roomMaterialBrightness.toFixed(1)}x
+          </label>
+          <input 
+            id="room-material-brightness"
+            type="range" 
+            min="0.5" 
+            max="3" 
+            step="0.1" 
+            value={roomMaterialBrightness}
+            onChange={(e) => setRoomMaterialBrightness(parseFloat(e.target.value))}
+            disabled={!roomBounds}
+            style={{flex: 1, cursor: roomBounds ? 'pointer' : 'not-allowed'}}
+          />
         </div>
       </div>
       
